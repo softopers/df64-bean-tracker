@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hand Grinder Calibrator</title>
-  <link rel="icon" href="favicon.ico" sizes="any" />
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" href="favicon/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bodoni+Moda:ital,wght@0,400;1,400;1,500;1,700&display=swap" rel="stylesheet" />
@@ -117,11 +117,25 @@
         zeroOffset: 75,
         majorTick: 10,
         accentColor: '#9bb086',
+        dialNotation: 'numbered',
+        // External-dial grinder: HCG/Timemore publish dial-position ranges directly,
+        // and burr geometry makes the linear µm/click derivation underestimate the
+        // physical V60/pour-over position. These match Timemore's manual + HCG.
+        methodOverrides: {
+          espresso: [1, 15],
+          moka:     [5, 20],
+          aeropress:[28, 48],
+          v60:      [50, 80],
+          chemex:   [50, 80],
+          french:   [80, 90],
+          cold:     [55, 90],
+        },
       },
       timemore_c2: {
         id: 'timemore_c2',
         name: 'Timemore Chestnut',
         model: 'C2',
+        variants: 'C2/C2 Max/C2S/C2 Fold',
         subtitle: 'C2 · Standard',
         minClick: 0,
         maxClick: 36,
@@ -132,6 +146,24 @@
         zeroOffset: 0,
         majorTick: 6,
         accentColor: '#b89a7c',
+      },
+      timemore_c3: {
+        id: 'timemore_c3',
+        name: 'Timemore Chestnut',
+        model: 'C3',
+        variants: 'C3/C3S',
+        subtitle: 'C3 · S2C660',
+        minClick: 0,
+        maxClick: 25,
+        // 41 µm/click empirically back-fits HCG's C3/C3S brew-method ranges to
+        // within 1 click across espresso/moka/V60/aeropress. Brew Coffee Home
+        // cites Timemore's ~83 µm/click hardware figure, but that implies a
+        // >2 mm range — HCG caps at 950 µm. Same shape as the C2 discrepancy.
+        // C3 (2021) and C3S (2023 refresh) share burrs, dial, and HCG ranges.
+        micronsPerClick: 41,
+        zeroOffset: 0,
+        majorTick: 5,
+        accentColor: '#8a7a6a',
       },
       zp6: {
         id: 'zp6',
@@ -145,13 +177,60 @@
         majorTick: 10,
         accentColor: '#7ab4d0',
         excludedMethods: ['espresso'],
+        dialNotation: 'numbered',
+        // External-dial grinder: hexagonal burrs produce a different effective
+        // particle distribution than the C40, so HCG/community ranges don't match
+        // the linear µm/click curve. Sources: Honest Coffee Guide ZP6 chart and
+        // 1Zpresso Champion Recipe Collection.
+        methodOverrides: {
+          moka:     [11, 36],
+          aeropress:[25, 45],
+          v60:      [25, 45],
+          chemex:   [35, 55],
+          french:   [55, 75],
+          cold:     [60, 90],
+        },
+      },
+      k_ultra: {
+        id: 'k_ultra',
+        name: '1Zpresso',
+        model: 'K-Ultra',
+        subtitle: 'K-Ultra · Heptagonal 48mm',
+        minClick: 0,
+        maxClick: 100,
+        // 7.6 µm/click + 40 µm factory zero back-fits HCG's K-Ultra brew ranges
+        // across espresso/V60/moka within 1–4 clicks. Manufacturer's 20 µm/click
+        // figure (1Zpresso, brewcoffeehome) implies a 2 mm total range that HCG's
+        // own 0–760 µm chart and click placements both contradict.
+        micronsPerClick: 7.6,
+        zeroOffset: 40,
+        majorTick: 10,
+        accentColor: '#a98aa5',
+        dialNotation: 'numbered',
+        // External-dial grinder: HCG K-Ultra chart values used directly.
+        // Cold brew and the top of French press are clamped at click 100
+        // because HCG itself caps the dial there (see grinder-research/k-ultra.md).
+        methodOverrides: {
+          espresso: [24, 50],
+          moka:     [48, 86],
+          aeropress:[43, 100],
+          v60:      [53, 92],
+          french:   [91, 100],
+          cold:     [95, 100],
+        },
       },
     };
 
     // Returns [lo, hi] click range for a method on a grinder, or null if
     // the method is excluded or its micron range falls outside the grinder.
+    // External-dial grinders (S3, ZP6, K-Ultra) carry methodOverrides that
+    // win over the linear µm-derived range — burr geometry breaks linearity
+    // and we display whatever HCG/manufacturer says the dial reads.
     function getMethodClickRange(grinder, methodId) {
       if (grinder.excludedMethods && grinder.excludedMethods.indexOf(methodId) !== -1) return null;
+      if (grinder.methodOverrides && grinder.methodOverrides[methodId]) {
+        return grinder.methodOverrides[methodId];
+      }
       const mr = METHOD_MICRON_RANGES[methodId];
       if (!mr) return null;
       const rawLo = (mr[0] - grinder.zeroOffset) / grinder.micronsPerClick;
@@ -249,7 +328,22 @@
       const raw = (microns - grinder.zeroOffset) / grinder.micronsPerClick;
       return Math.max(grinder.minClick, Math.min(grinder.maxClick, Math.round(raw)));
     }
-    function mapClicks(fromGrinder, toGrinder, click) {
+    function mapClicks(fromGrinder, toGrinder, click, methodId) {
+      // When both grinders have a recommended range for this method and the
+      // source click sits inside its own range, map by relative position
+      // within that range — so V60 mid on C40 lands on V60 mid on S3, even
+      // when burr geometry breaks linear µm/click. Outside the range, fall
+      // back to linear µm/click.
+      if (methodId) {
+        const fromRange = getMethodClickRange(fromGrinder, methodId);
+        const toRange = getMethodClickRange(toGrinder, methodId);
+        if (fromRange && toRange && click >= fromRange[0] && click <= fromRange[1]) {
+          const span = fromRange[1] - fromRange[0];
+          const frac = span === 0 ? 0 : (click - fromRange[0]) / span;
+          const mapped = toRange[0] + frac * (toRange[1] - toRange[0]);
+          return Math.max(toGrinder.minClick, Math.min(toGrinder.maxClick, Math.round(mapped)));
+        }
+      }
       const microns = clickToMicrons(fromGrinder, click);
       return micronsToClick(toGrinder, microns);
     }
@@ -259,7 +353,7 @@
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, startAngle: 0, startClick: 0 });
       const lastSoundClickRef = useRef(click);
-      const range = getMethodClickRange(grinder, methodId);
+      const range = getMethodClickRange(grinder);
       const totalClicks = grinder.maxClick - grinder.minClick;
 
       const clickToAngleDeg = (c) => {
@@ -466,7 +560,7 @@
                     dominantBaseline="middle"
                     style={{ fontFamily: '"DM Mono", monospace', fontWeight: 500 }}
                   >
-                    {t.click}
+                    {grinder.dialNotation === 'numbered' ? t.click / 10 : t.click}
                   </text>
                 );
               })}
@@ -484,7 +578,7 @@
                 height: 180,
                 background: `radial-gradient(circle at 30% 25%, #4a4540 0%, #2a2520 35%, #0a0908 100%)`,
                 boxShadow: `inset 0 2px 4px rgba(255,255,255,0.08), inset 0 -3px 8px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.7)`,
-                transform: `rotate(${angleDeg + 90}deg)`,
+                transform: `rotate(${angleDeg}deg)`,
                 transition: dragRef.current.active ? 'none' : 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 touchAction: 'none',
               }}
@@ -538,7 +632,12 @@
             >
               <div
                 className="text-[8px] tracking-[0.08em] uppercase mb-0.5"
-                style={{ color: grinder.accentColor, opacity: 0.6, fontFamily: '"DM Mono", monospace' }}
+                style={{
+                  color: grinder.accentColor,
+                  opacity: 0.6,
+                  fontFamily: '"DM Mono", monospace',
+                  visibility: grinder.dialNotation === 'numbered' ? 'hidden' : 'visible',
+                }}
               >
                 Clicks
               </div>
@@ -547,10 +646,18 @@
                 style={{
                   color: grinder.accentColor,
                   fontFamily: '"DM Mono", monospace',
-                  letterSpacing: '0.02em',
+                  letterSpacing: '-0.02em',
                 }}
               >
-                {String(click).padStart(2, '0')}
+                {grinder.dialNotation === 'numbered' ? (
+                  <>
+                    {Math.floor(click / 10)}
+                    <span style={{ fontSize: '0.5em', margin: '0 -0.08em' }}>.</span>
+                    {click % 10}
+                  </>
+                ) : (
+                  String(click).padStart(2, '0')
+                )}
               </div>
               <div
                 className="text-[8px] tracking-[0.06em] mt-0.5"
@@ -624,7 +731,7 @@
               fontFamily: '"DM Mono", monospace',
             }}
           >
-            <span className="uppercase">{current.name}{current.model ? ` ${current.model}` : ''}</span>
+            <span className="uppercase">{current.name}{(current.variants || current.model) ? ` ${current.variants || current.model}` : ''}</span>
             <ChevronDownIcon size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
           </button>
           {open && (
@@ -646,7 +753,7 @@
                   className="w-full px-3 py-2 text-left text-stone-300 text-xs tracking-wider uppercase hover:bg-stone-800 transition-colors"
                   style={{ fontFamily: '"DM Mono", monospace' }}
                 >
-                  {opt.name}{opt.model ? ` ${opt.model}` : ''}
+                  {opt.name}{(opt.variants || opt.model) ? ` ${opt.variants || opt.model}` : ''}
                 </button>
               ))}
             </div>
@@ -712,10 +819,10 @@
         const newGrinder = GRINDERS[newId];
         syncingRef.current = true;
         setLeftId(newId);
-        const remapped = mapClicks(oldGrinder, newGrinder, leftClick);
+        const remapped = mapClicks(oldGrinder, newGrinder, leftClick, methodId);
         setLeftClick(remapped);
         if (lockedSide !== 'right') {
-          setRightClick(mapClicks(newGrinder, GRINDERS[rightId], remapped));
+          setRightClick(mapClicks(newGrinder, GRINDERS[rightId], remapped, methodId));
         }
         setTimeout(() => { syncingRef.current = false; }, 50);
       };
@@ -724,10 +831,10 @@
         const newGrinder = GRINDERS[newId];
         syncingRef.current = true;
         setRightId(newId);
-        const remapped = mapClicks(oldGrinder, newGrinder, rightClick);
+        const remapped = mapClicks(oldGrinder, newGrinder, rightClick, methodId);
         setRightClick(remapped);
         if (lockedSide !== 'left') {
-          setLeftClick(mapClicks(newGrinder, GRINDERS[leftId], remapped));
+          setLeftClick(mapClicks(newGrinder, GRINDERS[leftId], remapped, methodId));
         }
         setTimeout(() => { syncingRef.current = false; }, 50);
       };
@@ -738,7 +845,7 @@
         setActiveSide('left');
         if (lockedSide === 'left') return;
         syncingRef.current = true;
-        setRightClick(mapClicks(leftGrinder, rightGrinder, newClick));
+        setRightClick(mapClicks(leftGrinder, rightGrinder, newClick, methodId));
         setTimeout(() => { syncingRef.current = false; }, 50);
       };
       const handleRightChange = (newClick) => {
@@ -747,7 +854,7 @@
         setActiveSide('right');
         if (lockedSide === 'right') return;
         syncingRef.current = true;
-        setLeftClick(mapClicks(rightGrinder, leftGrinder, newClick));
+        setLeftClick(mapClicks(rightGrinder, leftGrinder, newClick, methodId));
         setTimeout(() => { syncingRef.current = false; }, 50);
       };
 

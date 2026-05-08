@@ -10,10 +10,12 @@ A browser-based tool for mapping grind settings between hand grinders. Dial in a
 
 | Grinder | Notes | Research |
 |---|---|---|
-| Comandante C40 MK4 Nitro Blade | 30 µm/click, 0–40 clicks | [Research](grinder-research/compass_artifact_wf-733156ec-01ef-46af-a5bd-6f575d5c01bc_text_markdown.md) |
-| Timemore Chestnut S3 | 15 µm/click, 0.075 mm factory zero offset, 0–90 clicks | [Research](grinder-research/compass_artifact_wf-733156ec-01ef-46af-a5bd-6f575d5c01bc_text_markdown.md) |
-| Timemore Chestnut C2 | 35 µm/click (back-fit from HCG community ranges), 0–36 clicks | [Research](grinder-research/compass_artifact_wf-78d91def-6395-4c3b-a306-51ddc9e5e76c_text_markdown.md) |
-| 1Zpresso ZP6 Special | 22 µm/click, 0–90 clicks, pour-over only (no espresso) | [Research](grinder-research/compass_artifact_wf-9b051b00-1fb6-4ac0-89c9-ef55db886859_text_markdown.md) |
+| Comandante C40 MK4 Nitro Blade | 30 µm/click, 0–40 clicks | [Research](grinder-research/c40-s3.md) |
+| Timemore Chestnut S3 | 15 µm/click, 0.075 mm factory zero offset, 0–90 clicks | [Research](grinder-research/c40-s3.md) |
+| Timemore Chestnut C2 | 35 µm/click (back-fit from HCG community ranges), 0–36 clicks | [Research](grinder-research/c2.md) |
+| Timemore Chestnut C3 / C3S | 41 µm/click (back-fit from HCG; manufacturer cites ~83), 0–25 clicks, S2C660 burrs | [Research](grinder-research/c3.md) |
+| 1Zpresso ZP6 Special | 22 µm/click, 0–90 clicks, pour-over only (no espresso) | [Research](grinder-research/zp6.md) |
+| 1Zpresso K-Ultra | 7.6 µm/click (back-fit from HCG; manufacturer cites 20), ~40 µm factory zero offset, 0–100 clicks | [Research](grinder-research/k-ultra.md) |
 
 ## How the mapping works
 
