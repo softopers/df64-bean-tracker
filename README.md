@@ -12,8 +12,16 @@ A browser-based tool for mapping grind settings between hand grinders. Dial in a
 |---|---|---|
 | Comandante C40 MK4 Nitro Blade | 30 µm/click, 0–40 clicks | [Research](grinder-research/compass_artifact_wf-733156ec-01ef-46af-a5bd-6f575d5c01bc_text_markdown.md) |
 | Timemore Chestnut S3 | 15 µm/click, 0.075 mm factory zero offset, 0–90 clicks | [Research](grinder-research/compass_artifact_wf-733156ec-01ef-46af-a5bd-6f575d5c01bc_text_markdown.md) |
-| Timemore Chestnut C2 | 80 µm/click, 0–36 clicks | [Research](grinder-research/compass_artifact_wf-78d91def-6395-4c3b-a306-51ddc9e5e76c_text_markdown.md) |
+| Timemore Chestnut C2 | 35 µm/click (back-fit from HCG community ranges), 0–36 clicks | [Research](grinder-research/compass_artifact_wf-78d91def-6395-4c3b-a306-51ddc9e5e76c_text_markdown.md) |
 | 1Zpresso ZP6 Special | 22 µm/click, 0–90 clicks, pour-over only (no espresso) | [Research](grinder-research/compass_artifact_wf-9b051b00-1fb6-4ac0-89c9-ef55db886859_text_markdown.md) |
+
+## How the mapping works
+
+Microns are the single source of truth. Each brew method has a recommended micron range, and every grinder's click range is derived from that range using its own µm-per-click and zero-offset values. Setting one grinder updates the other to the equivalent grind size in microns.
+
+## Brew-method ranges source
+
+Recommended ranges are based on the [Honest Coffee Guide](https://honestcoffeeguide.com/) charts for each grinder, expressed in microns so they apply consistently across grinders.
 
 ## License
 

@@ -79,6 +79,19 @@
       );
     }
 
+    // ========== BREW METHOD RANGES (single source of truth, in microns) ==========
+    // Derived from Honest Coffee Guide's Comandante C40 ranges × 30 µm/click.
+    // Every grinder maps to these via its own micronsPerClick + zeroOffset.
+    const METHOD_MICRON_RANGES = {
+      espresso:  [210, 390],
+      moka:      [420, 720],
+      aeropress: [360, 1050],
+      v60:       [450, 750],
+      chemex:    [750, 1020],
+      french:    [780, 1200],
+      cold:      [900, 1200],
+    };
+
     // ========== GRINDER CONFIG ==========
     const GRINDERS = {
       commandante: {
@@ -92,15 +105,6 @@
         zeroOffset: 0,
         majorTick: 5,
         accentColor: '#c89d6a',
-        methodRanges: {
-          espresso: [7, 13],
-          moka: [14, 20],
-          aeropress: [18, 28],
-          v60: [18, 24],
-          chemex: [25, 32],
-          french: [28, 36],
-          cold: [32, 40],
-        },
       },
       timemore_s3: {
         id: 'timemore_s3',
@@ -113,15 +117,6 @@
         zeroOffset: 75,
         majorTick: 10,
         accentColor: '#9bb086',
-        methodRanges: {
-          espresso: [1, 15],
-          moka: [22, 34],
-          aeropress: [28, 48],
-          v60: [30, 42],
-          chemex: [44, 58],
-          french: [52, 68],
-          cold: [60, 76],
-        },
       },
       timemore_c2: {
         id: 'timemore_c2',
@@ -130,19 +125,13 @@
         subtitle: 'C2 · Standard',
         minClick: 0,
         maxClick: 36,
-        micronsPerClick: 80,
+        // 35 µm/click empirically back-fits HCG's C2 brew-method ranges across
+        // espresso/V60/moka/aeropress. Timemore's 80 µm/click hardware figure is
+        // inconsistent with HCG's 0–950 µm total range claim (36 × 80 = 2880).
+        micronsPerClick: 35,
         zeroOffset: 0,
         majorTick: 6,
         accentColor: '#b89a7c',
-        methodRanges: {
-          espresso: [6, 12],
-          moka: [9, 15],
-          aeropress: [11, 19],
-          v60: [15, 22],
-          chemex: [24, 32],
-          french: [22, 30],
-          cold: [26, 36],
-        },
       },
       zp6: {
         id: 'zp6',
@@ -155,17 +144,23 @@
         zeroOffset: 0,
         majorTick: 10,
         accentColor: '#7ab4d0',
-        methodRanges: {
-          espresso: null,
-          moka: [11, 36],
-          aeropress: [25, 45],
-          v60: [25, 45],
-          chemex: [35, 55],
-          french: [55, 75],
-          cold: [60, 90],
-        },
+        excludedMethods: ['espresso'],
       },
     };
+
+    // Returns [lo, hi] click range for a method on a grinder, or null if
+    // the method is excluded or its micron range falls outside the grinder.
+    function getMethodClickRange(grinder, methodId) {
+      if (grinder.excludedMethods && grinder.excludedMethods.indexOf(methodId) !== -1) return null;
+      const mr = METHOD_MICRON_RANGES[methodId];
+      if (!mr) return null;
+      const rawLo = (mr[0] - grinder.zeroOffset) / grinder.micronsPerClick;
+      const rawHi = (mr[1] - grinder.zeroOffset) / grinder.micronsPerClick;
+      if (rawHi <= grinder.minClick || rawLo >= grinder.maxClick) return null;
+      const lo = Math.max(grinder.minClick, Math.round(rawLo));
+      const hi = Math.min(grinder.maxClick, Math.round(rawHi));
+      return [lo, hi];
+    }
 
     const METHODS = [
       { id: 'v60', label: 'V60' },
@@ -264,7 +259,7 @@
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, startAngle: 0, startClick: 0 });
       const lastSoundClickRef = useRef(click);
-      const range = grinder.methodRanges[methodId];
+      const range = getMethodClickRange(grinder, methodId);
       const totalClicks = grinder.maxClick - grinder.minClick;
 
       const clickToAngleDeg = (c) => {
@@ -758,8 +753,8 @@
 
       const handleMethodChange = (id) => {
         setMethodId(id);
-        const lr = leftGrinder.methodRanges[id];
-        const rr = rightGrinder.methodRanges[id];
+        const lr = getMethodClickRange(leftGrinder, id);
+        const rr = getMethodClickRange(rightGrinder, id);
         syncingRef.current = true;
         if (lr) setLeftClick(Math.round((lr[0] + lr[1]) / 2));
         if (rr) setRightClick(Math.round((rr[0] + rr[1]) / 2));
@@ -1013,7 +1008,7 @@
 
             <div className="mt-16 mb-1 text-center text-[10px] leading-relaxed text-stone-600"
               style={{ fontFamily: '"DM Mono", monospace', letterSpacing: '0.05em' }}>
-              Each setting is converted to microns via µm/click and zero offset, then mapped to the target grinder — use it as a starting point and adjust to taste.
+              Each setting is converted to microns via µm/click and zero offset, then mapped to the target grinder. Recommended ranges adapted from <a href="https://honestcoffeeguide.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px' }}>Honest Coffee Guide</a> — use as a starting point and adjust to taste.
             </div>
             <div className="mb-2 text-center text-[10px] text-stone-700"
               style={{ fontFamily: '"DM Mono", monospace', letterSpacing: '0.05em' }}>
