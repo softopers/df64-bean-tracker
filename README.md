@@ -16,6 +16,8 @@ A browser-based tool for mapping grind settings between hand grinders. Dial in a
 | Timemore Chestnut C3 / C3S | 41 µm/click (back-fit from HCG; manufacturer cites ~83), 0–25 clicks, S2C660 burrs | [Research](grinder-research/c3.md) |
 | 1Zpresso ZP6 Special | 22 µm/click, 0–90 clicks, pour-over only (no espresso) | [Research](grinder-research/zp6.md) |
 | 1Zpresso K-Ultra | 7.6 µm/click (back-fit from HCG; manufacturer cites 20), ~40 µm factory zero offset, 0–100 clicks | [Research](grinder-research/k-ultra.md) |
+| KINGrinder K6 | 8.5 µm/click (back-fit from HCG; manufacturer cites 16), ~40 µm factory zero offset, 0–180 clicks, R.CC dial notation | [Research](grinder-research/k6.md) |
+| 1Zpresso Q Air | 12.5 µm/click (back-fit from HCG; manufacturer cites 25), 0–120 clicks, R.N.C dial notation | [Research](grinder-research/q-air.md) |
 
 ## How the mapping works
 

@@ -219,6 +219,50 @@
           cold:     [95, 100],
         },
       },
+      king_k6: {
+        id: 'king_k6',
+        name: 'KINGrinder',
+        model: 'K6',
+        subtitle: 'K6 · Heptagonal 48mm',
+        minClick: 0,
+        maxClick: 180,
+        // 8.5 µm/click + 40 µm zero offset back-fits HCG's K6 brew ranges
+        // across espresso/moka/V60/aeropress within 0–4 clicks. Manufacturer's
+        // 16 µm/click figure implies a >2800 µm range inconsistent with HCG's
+        // "0–1350 µm" claim and brew-method placements. Same discrepancy shape
+        // as K-Ultra (20 vs 7.6) and C2 (80 vs 35) — follow HCG.
+        micronsPerClick: 8.5,
+        zeroOffset: 40,
+        majorTick: 60,
+        accentColor: '#a07850',
+        dialNotation: 'numbered',
+        // External-dial grinder: French press and cold brew use HCG overrides
+        // because the linear model diverges at the coarse end (non-linear gap
+        // expansion per click). Espresso/moka/V60/aeropress use linear model.
+        methodOverrides: {
+          french: [82, 154],
+          cold:   [95, 160],
+        },
+      },
+      zpresso_q_air: {
+        id: 'zpresso_q_air',
+        name: '1Zpresso Q Air',
+        model: 'Q Air',
+        variants: 'Q Air / Q2 (heptagonal)',
+        subtitle: 'Q Air · Heptagonal 38mm',
+        minClick: 0,
+        maxClick: 120,
+        // 12.5 µm/click back-fits HCG's Q Air brew ranges across espresso/
+        // moka/AeroPress/V60 within 1–2 clicks. Manufacturer's 25 µm/click
+        // figure (1Zpresso Q-series manual: 0.75 mm/rotation ÷ 30 clicks)
+        // implies a 3000 µm range — contradicts HCG's 0–1360 µm total.
+        // Exactly 2× discrepancy; same pattern as K-Ultra and C2 — follow HCG.
+        micronsPerClick: 12.5,
+        zeroOffset: 0,
+        majorTick: 10,
+        accentColor: '#c47a5a',
+        dialNotation: 'numbered',
+      },
     };
 
     // Returns [lo, hi] click range for a method on a grinder, or null if
@@ -1119,7 +1163,7 @@
             </div>
             <div className="mb-2 text-center text-[10px] text-stone-700"
               style={{ fontFamily: '"DM Mono", monospace', letterSpacing: '0.05em' }}>
-              made by <a href="https://www.instagram.com/filtercoffeeconnoisseur" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px' }}>@filtercoffeeconnoisseur</a> with Claude
+              made by <a href="https://www.instagram.com/filtercoffeeconnoisseur" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px' }}>@filtercoffeeconnoisseur</a> with Claude · <a href="https://github.com/inosaint/grinder-calibrator/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px' }}>report a bug</a>
             </div>
           </main>
         </div>
