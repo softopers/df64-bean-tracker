@@ -76,11 +76,21 @@
       let enabled = true;
       const volumeScale = 1;
       let resumePromise = null;
+      let pendingVariant = null;
+      let readyListener = null;
+
+      const notifyReady = (value) => {
+        if (readyListener) readyListener(value);
+      };
 
       const getCtx = () => {
         if (ctx) return ctx;
         try {
           ctx = new (window.AudioContext || window.webkitAudioContext)();
+          notifyReady(ctx.state === 'running');
+          ctx.addEventListener('statechange', () => {
+            notifyReady(ctx.state === 'running');
+          });
           return ctx;
         } catch (e) {
           return null;
@@ -143,11 +153,27 @@
       const ensureRunning = () => {
         const audioCtx = getCtx();
         if (!audioCtx) return Promise.resolve(null);
-        if (audioCtx.state === 'running') return Promise.resolve(audioCtx);
+        if (audioCtx.state === 'running') {
+          notifyReady(true);
+          if (pendingVariant) {
+            const variant = pendingVariant;
+            pendingVariant = null;
+            emit(audioCtx, variant);
+          }
+          return Promise.resolve(audioCtx);
+        }
         if (resumePromise) return resumePromise;
 
         resumePromise = audioCtx.resume()
-          .then(() => audioCtx)
+          .then(() => {
+            notifyReady(audioCtx.state === 'running');
+            if (audioCtx.state === 'running' && pendingVariant) {
+              const variant = pendingVariant;
+              pendingVariant = null;
+              emit(audioCtx, variant);
+            }
+            return audioCtx;
+          })
           .catch(() => null)
           .finally(() => {
             resumePromise = null;
@@ -165,21 +191,25 @@
           return;
         }
 
-        ensureRunning().then((readyCtx) => {
-          if (!enabled || !readyCtx || readyCtx.state !== 'running') return;
-          emit(readyCtx, variant);
-        });
+        pendingVariant = variant;
       };
 
       const setEnabled = (next) => {
         enabled = next;
+        if (!enabled) pendingVariant = null;
       };
 
       const unlock = () => {
-        ensureRunning();
+        return ensureRunning();
       };
 
-      return { play, setEnabled, unlock };
+      const onReadyChange = (listener) => {
+        readyListener = listener;
+        const audioCtx = getCtx();
+        if (audioCtx) listener(audioCtx.state === 'running');
+      };
+
+      return { play, setEnabled, unlock, onReadyChange };
     }
 
     function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
@@ -651,6 +681,7 @@
       const [presets, setPresets] = useState([]);
       const [dialOffset, setDialOffset] = useState(0);
       const [soundOn, setSoundOn] = useState(true);
+      const [soundReady, setSoundReady] = useState(false);
       const [sortMode, setSortMode] = useState('latest');
       const [density, setDensity] = useState('comfortable');
       const [undoAction, setUndoAction] = useState(null);
@@ -837,6 +868,33 @@
       }, [soundOn]);
 
       useEffect(() => {
+        if (!soundEngineRef.current || !soundEngineRef.current.onReadyChange) return;
+        soundEngineRef.current.onReadyChange((ready) => {
+          setSoundReady(Boolean(ready));
+        });
+      }, []);
+
+      useEffect(() => {
+        if (!soundOn || soundReady) return;
+
+        const prime = () => {
+          unlockSound();
+        };
+
+        window.addEventListener('pointerdown', prime, { passive: true });
+        window.addEventListener('touchstart', prime, { passive: true });
+        window.addEventListener('mousedown', prime);
+        window.addEventListener('keydown', prime);
+
+        return () => {
+          window.removeEventListener('pointerdown', prime);
+          window.removeEventListener('touchstart', prime);
+          window.removeEventListener('mousedown', prime);
+          window.removeEventListener('keydown', prime);
+        };
+      }, [soundOn, soundReady, unlockSound]);
+
+      useEffect(() => {
         return () => {
           if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
           if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -1019,6 +1077,7 @@
               <button
                 onClick={() => {
                   setSoundOn((v) => !v);
+                  if (!soundOn) unlockSound();
                 }}
                 className="w-[72px] px-2 py-1 rounded text-[9px] uppercase tracking-[0.05em]"
                 style={{
@@ -1032,6 +1091,37 @@
               </button>
             </div>
           </header>
+
+          {soundOn && !soundReady && (
+            <div className="px-4 pt-3 max-w-md mx-auto">
+              <div
+                className="rounded-md border px-3 py-2 flex items-center justify-between gap-2"
+                style={{
+                  background: 'linear-gradient(180deg, #181412 0%, #0f0b0a 100%)',
+                  borderColor: '#2a2520',
+                }}
+              >
+                <div className="text-[10px] text-stone-400" style={{ fontFamily: '"DM Mono", monospace' }}>
+                  Tap once to enable sound on this device.
+                </div>
+                <button
+                  onClick={() => {
+                    unlockSound();
+                    playClickSound('detent');
+                  }}
+                  className="px-2 py-1 rounded text-[9px] uppercase tracking-[0.05em]"
+                  style={{
+                    fontFamily: '"DM Mono", monospace',
+                    background: 'linear-gradient(180deg, #2a2520 0%, #14110f 100%)',
+                    color: '#c89d6a',
+                    border: '1px solid #2a2520',
+                  }}
+                >
+                  Enable Sound
+                </button>
+              </div>
+            </div>
+          )}
 
           <main className="px-4 pt-6 pb-20 max-w-md mx-auto">
             <section
