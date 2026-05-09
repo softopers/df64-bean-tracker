@@ -687,10 +687,6 @@
         }, 5000);
       }, []);
 
-      const playClickSound = useCallback((variant) => {
-        soundEngineRef.current.play(variant);
-      }, []);
-
       const soundInitializedRef = useRef(false);
 
       const ensureSoundReady = useCallback(() => {
@@ -701,6 +697,12 @@
           soundInitializedRef.current = true;
         }
       }, []);
+
+      const playClickSound = useCallback((variant) => {
+        // Ensure audio context is ready before playing
+        ensureSoundReady();
+        soundEngineRef.current.play(variant);
+      }, [ensureSoundReady]);
 
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
