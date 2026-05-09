@@ -168,7 +168,7 @@
       return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, ensureSoundReady }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, initializeAudioContext }) {
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, lastAngle: 0, accumulatedDelta: 0, startClick: 0, lastClick: 0 });
       const lastSoundClickRef = useRef(click);
@@ -196,7 +196,7 @@
 
       const handlePointerDown = (e) => {
         e.preventDefault();
-        ensureSoundReady?.();
+        initializeAudioContext?.();
         setLabelsVisible(true);
         const startAngle = getAngleFromEvent(e);
         dragRef.current = {
@@ -689,39 +689,20 @@
 
       const soundInitializedRef = useRef(false);
 
-      const ensureSoundReady = useCallback(() => {
-        // On mobile, AudioContext must be created AND resumed inside a gesture handler.
-        // We do both here on first touch to ensure sound plays immediately.
-        if (!soundInitializedRef.current && soundEngineRef.current.unlock) {
+      const initializeAudioContext = useCallback(() => {
+        // Initialize Web Audio context on first user gesture (required by browsers on mobile).
+        // Safe to call multiple times - only initializes once.
+        if (soundInitializedRef.current) return;
+        if (soundEngineRef.current.unlock) {
           soundEngineRef.current.unlock();
           soundInitializedRef.current = true;
         }
       }, []);
 
       const playClickSound = useCallback((variant) => {
-        // Ensure audio context is ready before playing
-        ensureSoundReady();
+        initializeAudioContext();
         soundEngineRef.current.play(variant);
-      }, [ensureSoundReady]);
-
-      // Initialize audio context on first user interaction anywhere on the page
-      // This ensures sound is ready by the time dial is dragged
-      useEffect(() => {
-        const initAudioOnInteraction = () => {
-          ensureSoundReady();
-          // Remove listeners after first interaction
-          document.removeEventListener('touchstart', initAudioOnInteraction);
-          document.removeEventListener('mousedown', initAudioOnInteraction);
-        };
-        
-        document.addEventListener('touchstart', initAudioOnInteraction, { once: true });
-        document.addEventListener('mousedown', initAudioOnInteraction, { once: true });
-        
-        return () => {
-          document.removeEventListener('touchstart', initAudioOnInteraction);
-          document.removeEventListener('mousedown', initAudioOnInteraction);
-        };
-      }, [ensureSoundReady]);
+      }, [initializeAudioContext]);
 
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
@@ -1136,7 +1117,7 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
-                ensureSoundReady={ensureSoundReady}
+                initializeAudioContext={initializeAudioContext}
               />
             </div>
 
