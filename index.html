@@ -75,7 +75,6 @@
       let ctx = null;
       let enabled = true;
       const volumeScale = 1;
-
       const getCtx = () => {
         if (!ctx) {
           try {
@@ -84,10 +83,14 @@
             return null;
           }
         }
+        if (ctx.state === 'suspended') ctx.resume();
         return ctx;
       };
 
-      const emit = (c, variant = 'detent') => {
+      const play = (variant = 'detent') => {
+        if (!enabled) return;
+        const c = getCtx();
+        if (!c) return;
         const t = c.currentTime;
 
         const bufSize = Math.floor(c.sampleRate * 0.04);
@@ -140,41 +143,18 @@
         }
       };
 
-      const play = (variant = 'detent') => {
-        if (!enabled) return;
-        const c = getCtx();
-        if (!c) return;
-
-        if (c.state === 'running') {
-          emit(c, variant);
-          return;
-        }
-
-        c.resume().then(() => {
-          if (!enabled || c.state !== 'running') return;
-          emit(c, variant);
-        }).catch(() => {});
-      };
-
       const setEnabled = (next) => {
         enabled = next;
+        if (enabled) getCtx();
       };
 
-      const unlock = () => {
-        const c = getCtx();
-        if (!c || c.state === 'running') return;
-        c.resume().catch(() => {});
-      };
-
-      return { play, setEnabled, unlock };
+      return { play, setEnabled };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound }) {
       const dialRef = useRef(null);
-      const dragRef = useRef({ active: false, lastClick: click });
+      const dragRef = useRef({ active: false, lastAngle: 0, accumulatedDelta: 0, startClick: 0, lastClick: 0 });
       const lastSoundClickRef = useRef(click);
-      const dragVibrationHandledRef = useRef(false);
-      const dragSoundHandledRef = useRef(false);
       const labelHideTimerRef = useRef(null);
       const rangePulseTimerRef = useRef(null);
       const [labelsVisible, setLabelsVisible] = useState(false);
@@ -188,30 +168,6 @@
         return dialStart + t * DF64.dialSweep;
       }, [dialStart, totalClicks]);
 
-      const normalizeDeg = useCallback((deg) => {
-        let n = deg % 360;
-        if (n < 0) n += 360;
-        return n;
-      }, []);
-
-      const angleToClick = useCallback((angleDeg) => {
-        const start = normalizeDeg(dialStart);
-        const pointer = normalizeDeg(angleDeg);
-        let rel = pointer - start;
-        if (rel < 0) rel += 360;
-
-        if (rel > DF64.dialSweep) {
-          const distToStart = Math.min(rel, 360 - rel);
-          const distToEndRaw = Math.abs(rel - DF64.dialSweep);
-          const distToEnd = Math.min(distToEndRaw, 360 - distToEndRaw);
-          rel = distToStart <= distToEnd ? 0 : DF64.dialSweep;
-        }
-
-        const t = rel / DF64.dialSweep;
-        const mapped = DF64.minClick + t * totalClicks;
-        return Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(mapped)));
-      }, [dialStart, normalizeDeg, totalClicks]);
-
       const getAngleFromEvent = (e) => {
         const rect = dialRef.current.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
@@ -224,38 +180,35 @@
       const handlePointerDown = (e) => {
         e.preventDefault();
         setLabelsVisible(true);
-        if (unlockSound) unlockSound();
+        const startAngle = getAngleFromEvent(e);
         dragRef.current = {
           active: true,
+          lastAngle: startAngle,
+          accumulatedDelta: 0,
+          startClick: click,
           lastClick: click,
         };
       };
 
-      const getFeedbackVariant = useCallback((prevClick, nextClick) => {
-        const inRange = nextClick >= range[0] && nextClick <= range[1];
-        const wasInRange = prevClick >= range[0] && prevClick <= range[1];
-        const enteringRange = inRange && !wasInRange;
-        const atEdge = nextClick === DF64.minClick || nextClick === DF64.maxClick;
-        return atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
-      }, [range]);
-
       const handlePointerMove = useCallback((e) => {
         if (!dragRef.current.active) return;
-        if (e.touches) e.preventDefault();
+        if (e.cancelable) e.preventDefault();
         const currentAngle = getAngleFromEvent(e);
-        const next = angleToClick(currentAngle);
+
+        let stepDelta = currentAngle - dragRef.current.lastAngle;
+        while (stepDelta > 180) stepDelta -= 360;
+        while (stepDelta < -180) stepDelta += 360;
+
+        dragRef.current.accumulatedDelta += stepDelta;
+        dragRef.current.lastAngle = currentAngle;
+
+        const clickDelta = (dragRef.current.accumulatedDelta / DF64.dialSweep) * totalClicks;
+        const next = Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(dragRef.current.startClick + clickDelta)));
         if (next !== dragRef.current.lastClick) {
-          const variant = getFeedbackVariant(dragRef.current.lastClick, next);
-          playClickSound(variant);
-          dragSoundHandledRef.current = true;
-          if (vibrateFeedback) {
-            vibrateFeedback(variant);
-            dragVibrationHandledRef.current = true;
-          }
           setClick(next);
           dragRef.current.lastClick = next;
         }
-      }, [angleToClick, getFeedbackVariant, playClickSound, setClick, vibrateFeedback]);
+      }, [setClick, totalClicks]);
 
       useEffect(() => {
         const move = (e) => handlePointerMove(e);
@@ -271,11 +224,13 @@
         window.addEventListener('mouseup', up);
         window.addEventListener('touchmove', move, { passive: false });
         window.addEventListener('touchend', up);
+        window.addEventListener('touchcancel', up);
         return () => {
           window.removeEventListener('mousemove', move);
           window.removeEventListener('mouseup', up);
           window.removeEventListener('touchmove', move);
           window.removeEventListener('touchend', up);
+          window.removeEventListener('touchcancel', up);
           if (labelHideTimerRef.current) clearTimeout(labelHideTimerRef.current);
           if (rangePulseTimerRef.current) clearTimeout(rangePulseTimerRef.current);
         };
@@ -287,15 +242,7 @@
           const wasInRange = lastSoundClickRef.current >= range[0] && lastSoundClickRef.current <= range[1];
           const enteringRange = inRange && !wasInRange;
           const atEdge = click === DF64.minClick || click === DF64.maxClick;
-          const variant = atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
-          if (!dragSoundHandledRef.current) {
-            playClickSound(variant);
-          }
-          dragSoundHandledRef.current = false;
-          if (vibrateFeedback && !dragVibrationHandledRef.current) {
-            vibrateFeedback(variant);
-          }
-          dragVibrationHandledRef.current = false;
+          playClickSound(atEdge ? 'edge' : enteringRange ? 'snap' : 'detent');
           if (enteringRange) {
             setRangePulse(true);
             if (rangePulseTimerRef.current) clearTimeout(rangePulseTimerRef.current);
@@ -306,7 +253,7 @@
           }
           lastSoundClickRef.current = click;
         }
-      }, [click, playClickSound, range, vibrateFeedback]);
+      }, [click, range, playClickSound]);
 
       const numberedTicks = useMemo(() => {
         const ticks = [];
@@ -726,19 +673,6 @@
         soundEngineRef.current.play(variant);
       }, []);
 
-      const unlockSound = useCallback(() => {
-        if (soundEngineRef.current && soundEngineRef.current.unlock) {
-          soundEngineRef.current.unlock();
-        }
-      }, []);
-
-      const vibrateFeedback = useCallback((variant) => {
-        if (!navigator.vibrate) return;
-        if (variant === 'edge') navigator.vibrate(18);
-        else if (variant === 'snap') navigator.vibrate([12, 24, 16]);
-        else navigator.vibrate(8);
-      }, []);
-
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1152,8 +1086,6 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
-                unlockSound={unlockSound}
-                vibrateFeedback={vibrateFeedback}
               />
             </div>
 
