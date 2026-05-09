@@ -75,6 +75,7 @@
       let ctx = null;
       let enabled = true;
       const volumeScale = 1;
+
       const getCtx = () => {
         if (!ctx) {
           try {
@@ -83,14 +84,10 @@
             return null;
           }
         }
-        if (ctx.state === 'suspended') ctx.resume();
         return ctx;
       };
 
-      const play = (variant = 'detent') => {
-        if (!enabled) return;
-        const c = getCtx();
-        if (!c) return;
+      const emit = (c, variant = 'detent') => {
         const t = c.currentTime;
 
         const bufSize = Math.floor(c.sampleRate * 0.04);
@@ -143,18 +140,40 @@
         }
       };
 
-      const setEnabled = (next) => {
-        enabled = next;
-        if (enabled) getCtx();
+      const play = (variant = 'detent') => {
+        if (!enabled) return;
+        const c = getCtx();
+        if (!c) return;
+
+        if (c.state === 'running') {
+          emit(c, variant);
+          return;
+        }
+
+        c.resume().then(() => {
+          if (!enabled || c.state !== 'running') return;
+          emit(c, variant);
+        }).catch(() => {});
       };
 
-      return { play, setEnabled };
+      const setEnabled = (next) => {
+        enabled = next;
+      };
+
+      const unlock = () => {
+        const c = getCtx();
+        if (!c || c.state === 'running') return;
+        c.resume().catch(() => {});
+      };
+
+      return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, startAngle: 0, startClick: 0 });
       const lastSoundClickRef = useRef(click);
+      const dragVibrationHandledRef = useRef(false);
       const labelHideTimerRef = useRef(null);
       const rangePulseTimerRef = useRef(null);
       const [labelsVisible, setLabelsVisible] = useState(false);
@@ -180,6 +199,7 @@
       const handlePointerDown = (e) => {
         e.preventDefault();
         setLabelsVisible(true);
+        if (unlockSound) unlockSound();
         dragRef.current = {
           active: true,
           startAngle: getAngleFromEvent(e),
@@ -188,8 +208,17 @@
         };
       };
 
+      const getFeedbackVariant = useCallback((prevClick, nextClick) => {
+        const inRange = nextClick >= range[0] && nextClick <= range[1];
+        const wasInRange = prevClick >= range[0] && prevClick <= range[1];
+        const enteringRange = inRange && !wasInRange;
+        const atEdge = nextClick === DF64.minClick || nextClick === DF64.maxClick;
+        return atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
+      }, [range]);
+
       const handlePointerMove = useCallback((e) => {
         if (!dragRef.current.active) return;
+        if (e.touches) e.preventDefault();
         const currentAngle = getAngleFromEvent(e);
         let delta = currentAngle - dragRef.current.startAngle;
         while (delta > 180) delta -= 360;
@@ -197,10 +226,15 @@
         const clickDelta = (delta / DF64.dialSweep) * totalClicks;
         const next = Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(dragRef.current.startClick + clickDelta)));
         if (next !== dragRef.current.lastClick) {
+          if (vibrateFeedback) {
+            const variant = getFeedbackVariant(dragRef.current.lastClick, next);
+            vibrateFeedback(variant);
+            dragVibrationHandledRef.current = true;
+          }
           setClick(next);
           dragRef.current.lastClick = next;
         }
-      }, [setClick, totalClicks, playClickSound]);
+      }, [getFeedbackVariant, setClick, totalClicks, vibrateFeedback]);
 
       useEffect(() => {
         const move = (e) => handlePointerMove(e);
@@ -232,7 +266,12 @@
           const wasInRange = lastSoundClickRef.current >= range[0] && lastSoundClickRef.current <= range[1];
           const enteringRange = inRange && !wasInRange;
           const atEdge = click === DF64.minClick || click === DF64.maxClick;
-          playClickSound(atEdge ? 'edge' : enteringRange ? 'snap' : 'detent');
+          const variant = atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
+          playClickSound(variant);
+          if (vibrateFeedback && !dragVibrationHandledRef.current) {
+            vibrateFeedback(variant);
+          }
+          dragVibrationHandledRef.current = false;
           if (enteringRange) {
             setRangePulse(true);
             if (rangePulseTimerRef.current) clearTimeout(rangePulseTimerRef.current);
@@ -243,7 +282,7 @@
           }
           lastSoundClickRef.current = click;
         }
-      }, [click, range, playClickSound]);
+      }, [click, range, playClickSound, vibrateFeedback]);
 
       const numberedTicks = useMemo(() => {
         const ticks = [];
@@ -663,6 +702,19 @@
         soundEngineRef.current.play(variant);
       }, []);
 
+      const unlockSound = useCallback(() => {
+        if (soundEngineRef.current && soundEngineRef.current.unlock) {
+          soundEngineRef.current.unlock();
+        }
+      }, []);
+
+      const vibrateFeedback = useCallback((variant) => {
+        if (!navigator.vibrate) return;
+        if (variant === 'edge') navigator.vibrate(18);
+        else if (variant === 'snap') navigator.vibrate([12, 24, 16]);
+        else navigator.vibrate(8);
+      }, []);
+
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1076,6 +1128,8 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
+                unlockSound={unlockSound}
+                vibrateFeedback={vibrateFeedback}
               />
             </div>
 
