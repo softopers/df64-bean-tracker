@@ -165,14 +165,7 @@
         } catch (e) {}
       };
 
-      const initialize = () => {
-        // Eagerly create the context on app load.
-        // On mobile, it will be in 'suspended' state and resumed on first gesture.
-        // This ensures sound plays without latency on first interaction.
-        getCtx();
-      };
-
-      return { play, setEnabled, unlock, initialize };
+      return { play, setEnabled, unlock };
     }
 
     function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, ensureSoundReady }) {
@@ -698,18 +691,14 @@
         soundEngineRef.current.play(variant);
       }, []);
 
-      const ensureSoundReady = useCallback(() => {
-        if (soundEngineRef.current.unlock) {
-          soundEngineRef.current.unlock();
-        }
-      }, []);
+      const soundInitializedRef = useRef(false);
 
-      // Initialize Web Audio context on app mount (best practice)
-      // Context will be created and in 'suspended' state on mobile
-      // First user gesture (dial drag) will resume it
-      useEffect(() => {
-        if (soundEngineRef.current.initialize) {
-          soundEngineRef.current.initialize();
+      const ensureSoundReady = useCallback(() => {
+        // On mobile, AudioContext must be created AND resumed inside a gesture handler.
+        // We do both here on first touch to ensure sound plays immediately.
+        if (!soundInitializedRef.current && soundEngineRef.current.unlock) {
+          soundEngineRef.current.unlock();
+          soundInitializedRef.current = true;
         }
       }, []);
 
