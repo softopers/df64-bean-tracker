@@ -148,12 +148,16 @@
         if (enabled) getCtx();
       };
 
-      return { play, setEnabled };
+      const unlock = () => {
+        getCtx();
+      };
+
+      return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound }) {
       const dialRef = useRef(null);
-      const dragRef = useRef({ active: false, startAngle: 0, startClick: 0 });
+      const dragRef = useRef({ active: false, lastClick: click });
       const lastSoundClickRef = useRef(click);
       const labelHideTimerRef = useRef(null);
       const rangePulseTimerRef = useRef(null);
@@ -168,6 +172,30 @@
         return dialStart + t * DF64.dialSweep;
       }, [dialStart, totalClicks]);
 
+      const normalizeDeg = useCallback((deg) => {
+        let n = deg % 360;
+        if (n < 0) n += 360;
+        return n;
+      }, []);
+
+      const angleToClick = useCallback((angleDeg) => {
+        const start = normalizeDeg(dialStart);
+        const pointer = normalizeDeg(angleDeg);
+        let rel = pointer - start;
+        if (rel < 0) rel += 360;
+
+        if (rel > DF64.dialSweep) {
+          const distToStart = Math.min(rel, 360 - rel);
+          const distToEndRaw = Math.abs(rel - DF64.dialSweep);
+          const distToEnd = Math.min(distToEndRaw, 360 - distToEndRaw);
+          rel = distToStart <= distToEnd ? 0 : DF64.dialSweep;
+        }
+
+        const t = rel / DF64.dialSweep;
+        const mapped = DF64.minClick + t * totalClicks;
+        return Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(mapped)));
+      }, [dialStart, normalizeDeg, totalClicks]);
+
       const getAngleFromEvent = (e) => {
         const rect = dialRef.current.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
@@ -180,27 +208,23 @@
       const handlePointerDown = (e) => {
         e.preventDefault();
         setLabelsVisible(true);
+        if (unlockSound) unlockSound();
         dragRef.current = {
           active: true,
-          startAngle: getAngleFromEvent(e),
-          startClick: click,
           lastClick: click,
         };
       };
 
       const handlePointerMove = useCallback((e) => {
         if (!dragRef.current.active) return;
+        if (e.touches) e.preventDefault();
         const currentAngle = getAngleFromEvent(e);
-        let delta = currentAngle - dragRef.current.startAngle;
-        while (delta > 180) delta -= 360;
-        while (delta < -180) delta += 360;
-        const clickDelta = (delta / DF64.dialSweep) * totalClicks;
-        const next = Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(dragRef.current.startClick + clickDelta)));
+        const next = angleToClick(currentAngle);
         if (next !== dragRef.current.lastClick) {
           setClick(next);
           dragRef.current.lastClick = next;
         }
-      }, [setClick, totalClicks, playClickSound]);
+      }, [angleToClick, setClick]);
 
       useEffect(() => {
         const move = (e) => handlePointerMove(e);
@@ -663,6 +687,12 @@
         soundEngineRef.current.play(variant);
       }, []);
 
+      const unlockSound = useCallback(() => {
+        if (soundEngineRef.current && soundEngineRef.current.unlock) {
+          soundEngineRef.current.unlock();
+        }
+      }, []);
+
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1076,6 +1106,7 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
+                unlockSound={unlockSound}
               />
             </div>
 
