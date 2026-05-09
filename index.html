@@ -72,126 +72,115 @@
     }
 
     function createClickSoundEngine() {
-  let ctx = null;
-  let enabled = true;
-  const volumeScale = 1;
-  let pendingVariant = null;
-  let resumePromise = null;
+      let ctx = null;
+      let enabled = true;
+      const volumeScale = 1;
+      let resumePromise = null;
 
-  const emit = (audioCtx, variant) => {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    const t = audioCtx.currentTime;
+      const getCtx = () => {
+        if (ctx) return ctx;
+        try {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          return ctx;
+        } catch (e) {
+          return null;
+        }
+      };
 
-    const bufSize = Math.floor(audioCtx.sampleRate * 0.04);
-    const buffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.15));
+      const emit = (audioCtx, variant) => {
+        if (!audioCtx) return;
+        const t = audioCtx.currentTime;
+
+        const bufSize = Math.floor(audioCtx.sampleRate * 0.04);
+        const buffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.15));
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.value = variant === 'edge' ? 1200 : 2400;
+        noiseFilter.Q.value = 2;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime((variant === 'snap' ? 0.18 : 0.09) * volumeScale, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(audioCtx.destination);
+        noise.start(t);
+        noise.stop(t + 0.05);
+
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(variant === 'snap' ? 180 : 90, t);
+        osc.frequency.exponentialRampToValueAtTime(40, t + 0.05);
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.setValueAtTime(0.06 * volumeScale, t);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        osc.connect(oscGain);
+        oscGain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.07);
+
+        if (variant === 'snap') {
+          const chime = audioCtx.createOscillator();
+          chime.type = 'triangle';
+          chime.frequency.value = 1760;
+          const chimeGain = audioCtx.createGain();
+          chimeGain.gain.setValueAtTime(0.04 * volumeScale, t);
+          chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          chime.connect(chimeGain);
+          chimeGain.connect(audioCtx.destination);
+          chime.start(t);
+          chime.stop(t + 0.25);
+        }
+      };
+
+      const ensureRunning = () => {
+        const audioCtx = getCtx();
+        if (!audioCtx) return Promise.resolve(null);
+        if (audioCtx.state === 'running') return Promise.resolve(audioCtx);
+        if (resumePromise) return resumePromise;
+
+        resumePromise = audioCtx.resume()
+          .then(() => audioCtx)
+          .catch(() => null)
+          .finally(() => {
+            resumePromise = null;
+          });
+        return resumePromise;
+      };
+
+      const play = (variant = 'detent') => {
+        if (!enabled) return;
+        const audioCtx = getCtx();
+        if (!audioCtx) return;
+
+        if (audioCtx.state === 'running') {
+          emit(audioCtx, variant);
+          return;
+        }
+
+        ensureRunning().then((readyCtx) => {
+          if (!enabled || !readyCtx || readyCtx.state !== 'running') return;
+          emit(readyCtx, variant);
+        });
+      };
+
+      const setEnabled = (next) => {
+        enabled = next;
+      };
+
+      const unlock = () => {
+        ensureRunning();
+      };
+
+      return { play, setEnabled, unlock };
     }
-
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = buffer;
-    const noiseFilter = audioCtx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.value = variant === 'edge' ? 1200 : 2400;
-    noiseFilter.Q.value = 2;
-    const noiseGain = audioCtx.createGain();
-    noiseGain.gain.setValueAtTime((variant === 'snap' ? 0.18 : 0.09) * volumeScale, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(audioCtx.destination);
-    noise.start(t);
-    noise.stop(t + 0.05);
-
-    const osc = audioCtx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(variant === 'snap' ? 180 : 90, t);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.05);
-    const oscGain = audioCtx.createGain();
-    oscGain.gain.setValueAtTime(0.06 * volumeScale, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    osc.connect(oscGain);
-    oscGain.connect(audioCtx.destination);
-    osc.start(t);
-    osc.stop(t + 0.07);
-
-    if (variant === 'snap') {
-      const chime = audioCtx.createOscillator();
-      chime.type = 'triangle';
-      chime.frequency.value = 1760;
-      const chimeGain = audioCtx.createGain();
-      chimeGain.gain.setValueAtTime(0.04 * volumeScale, t);
-      chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-      chime.connect(chimeGain);
-      chimeGain.connect(audioCtx.destination);
-      chime.start(t);
-      chime.stop(t + 0.25);
-    }
-  };
-
-  const flushPending = () => {
-    if (!ctx || ctx.state !== 'running' || !pendingVariant || !enabled) return;
-    const variant = pendingVariant;
-    pendingVariant = null;
-    emit(ctx, variant);
-  };
-
-  const getCtx = () => {
-    if (ctx) return ctx;
-    try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-      ctx.addEventListener('statechange', flushPending);
-      return ctx;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  const ensureRunning = () => {
-    const audioCtx = getCtx();
-    if (!audioCtx) return Promise.resolve(null);
-    if (audioCtx.state === 'running') {
-      flushPending();
-      return Promise.resolve(audioCtx);
-    }
-    if (resumePromise) return resumePromise;
-    resumePromise = audioCtx.resume()
-      .catch(() => null)
-      .then(() => {
-        flushPending();
-        return audioCtx;
-      })
-      .finally(() => {
-        resumePromise = null;
-      });
-    return resumePromise;
-  };
-
-  const play = (variant = 'detent') => {
-    if (!enabled) return;
-    const audioCtx = getCtx();
-    if (!audioCtx) return;
-    if (audioCtx.state === 'running') {
-      emit(audioCtx, variant);
-      return;
-    }
-    pendingVariant = variant;
-    ensureRunning();
-  };
-
-  const setEnabled = (next) => {
-    enabled = next;
-    if (enabled) ensureRunning();
-  };
-
-  const unlock = () => {
-    ensureRunning();
-  };
-
-  return { play, setEnabled, unlock };
-}
 
     function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
       const dialRef = useRef(null);
