@@ -168,10 +168,11 @@
       return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, initializeAudioContext }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound }) {
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, lastAngle: 0, accumulatedDelta: 0, startClick: 0, lastClick: 0 });
       const lastSoundClickRef = useRef(click);
+      const lastHapticAtRef = useRef(0);
       const labelHideTimerRef = useRef(null);
       const rangePulseTimerRef = useRef(null);
       const [labelsVisible, setLabelsVisible] = useState(false);
@@ -196,7 +197,6 @@
 
       const handlePointerDown = (e) => {
         e.preventDefault();
-        initializeAudioContext?.();
         setLabelsVisible(true);
         const startAngle = getAngleFromEvent(e);
         dragRef.current = {
@@ -260,7 +260,15 @@
           const wasInRange = lastSoundClickRef.current >= range[0] && lastSoundClickRef.current <= range[1];
           const enteringRange = inRange && !wasInRange;
           const atEdge = click === DF64.minClick || click === DF64.maxClick;
-          playClickSound(atEdge ? 'edge' : enteringRange ? 'snap' : 'detent');
+          const variant = atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
+          playClickSound(variant);
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            const now = Date.now();
+            if (now - lastHapticAtRef.current > 18) {
+              lastHapticAtRef.current = now;
+              navigator.vibrate(variant === 'edge' ? 14 : variant === 'snap' ? 10 : 6);
+            }
+          }
           if (enteringRange) {
             setRangePulse(true);
             if (rangePulseTimerRef.current) clearTimeout(rangePulseTimerRef.current);
@@ -309,6 +317,7 @@
         const next = Math.max(DF64.minClick, Math.min(DF64.maxClick, click + delta));
         if (next === click) {
           playClickSound('edge');
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(14);
           return;
         }
         setClick(next);
@@ -689,7 +698,7 @@
 
       const soundInitializedRef = useRef(false);
 
-      const initializeAudioContext = useCallback(() => {
+      const ensureSoundReady = useCallback(() => {
         // Initialize Web Audio context on first user gesture (required by browsers on mobile).
         // Safe to call multiple times - only initializes once.
         if (soundInitializedRef.current) return;
@@ -700,9 +709,9 @@
       }, []);
 
       const playClickSound = useCallback((variant) => {
-        initializeAudioContext();
+        ensureSoundReady();
         soundEngineRef.current.play(variant);
-      }, [initializeAudioContext]);
+      }, [ensureSoundReady]);
 
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
@@ -1117,7 +1126,6 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
-                initializeAudioContext={initializeAudioContext}
               />
             </div>
 
