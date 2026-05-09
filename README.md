@@ -1,31 +1,28 @@
-# Hand Grinder Calibrator
+# DF64 Bean Tracker
 
-![](./grinder-v1.png)
+Personal, single-grinder tracker for storing coffee beans against DF64 click settings.
 
-A browser-based tool for mapping grind settings between hand grinders. Dial in a click count on one grinder and see the equivalent setting on another, based on each grinder's microns-per-click and zero-offset values. Includes brew method presets (V60, Espresso, AeroPress, Moka, Chemex, French Press, Cold Brew) with highlighted recommended ranges and haptic-style click audio feedback.
+This project has been simplified from a multi-grinder mapper to a single-purpose app:
 
-**[Use it here](https://kenneth.dsouza.im/grinder-calibrator/)**
+- Grinder: DF64 Gen 2
+- Use case: save/reload bean + method + click
+- Scope: personal workflow, no cross-grinder conversion
 
-## Supported grinders
+## What it does
 
-| Grinder | Notes | Research |
-|---|---|---|
-| Comandante C40 MK4 Nitro Blade | 30 µm/click, 0–40 clicks | [Research](grinder-research/c40-s3.md) |
-| Timemore Chestnut S3 | 15 µm/click, 0.075 mm factory zero offset, 0–90 clicks | [Research](grinder-research/c40-s3.md) |
-| Timemore Chestnut C2 | 35 µm/click (back-fit from HCG community ranges), 0–36 clicks | [Research](grinder-research/c2.md) |
-| Timemore Chestnut C3 / C3S | 41 µm/click (back-fit from HCG; manufacturer cites ~83), 0–25 clicks, S2C660 burrs | [Research](grinder-research/c3.md) |
-| 1Zpresso ZP6 Special | 22 µm/click, 0–90 clicks, pour-over only (no espresso) | [Research](grinder-research/zp6.md) |
-| 1Zpresso K-Ultra | 7.6 µm/click (back-fit from HCG; manufacturer cites 20), ~40 µm factory zero offset, 0–100 clicks | [Research](grinder-research/k-ultra.md) |
-| KINGrinder K6 | 8.5 µm/click (back-fit from HCG; manufacturer cites 16), ~40 µm factory zero offset, 0–180 clicks, R.CC dial notation | [Research](grinder-research/k6.md) |
-| 1Zpresso Q Air | 12.5 µm/click (back-fit from HCG; manufacturer cites 25), 0–120 clicks, R.N.C dial notation | [Research](grinder-research/q-air.md) |
+- Shows one interactive DF64 dial (0-90)
+- Highlights Honest Coffee Guide recommended range for the selected brew method
+- Saves bean presets locally in the browser (localStorage)
+- Lets you load and remove saved bean presets
+- Includes a small dial alignment offset control for matching your physical zero mark
 
-## How the mapping works
+## Method range source
 
-Microns are the single source of truth. Each brew method has a recommended micron range, and every grinder's click range is derived from that range using its own µm-per-click and zero-offset values. Setting one grinder updates the other to the equivalent grind size in microns.
+Method ranges are from Honest Coffee Guide:
 
-## Brew-method ranges source
+- https://honestcoffeeguide.com/turin-df64-gen-2-grind-settings/
 
-Recommended ranges are based on the [Honest Coffee Guide](https://honestcoffeeguide.com/) charts for each grinder, expressed in microns so they apply consistently across grinders.
+The app treats these as practical starting points. Final tuning should always be by taste.
 
 ## License
 
