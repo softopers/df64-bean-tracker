@@ -75,6 +75,7 @@
       let ctx = null;
       let enabled = true;
       const volumeScale = 1;
+      let resumePromise = null;
       const getCtx = () => {
         if (!ctx) {
           try {
@@ -83,13 +84,22 @@
             return null;
           }
         }
-        if (ctx.state === 'suspended') ctx.resume();
         return ctx;
       };
 
-      const play = (variant = 'detent') => {
-        if (!enabled) return;
+      const ensureReady = () => {
         const c = getCtx();
+        if (!c) return Promise.resolve(null);
+        if (c.state !== 'suspended') return Promise.resolve(c);
+        if (!resumePromise) {
+          resumePromise = c.resume().catch(() => null).finally(() => {
+            resumePromise = null;
+          });
+        }
+        return resumePromise.then(() => c);
+      };
+
+      const emit = (c, variant) => {
         if (!c) return;
         const t = c.currentTime;
 
@@ -143,19 +153,26 @@
         }
       };
 
+      const play = (variant = 'detent') => {
+        if (!enabled) return;
+        ensureReady().then((c) => {
+          emit(c, variant);
+        });
+      };
+
       const setEnabled = (next) => {
         enabled = next;
-        if (enabled) getCtx();
+        if (enabled) ensureReady();
       };
 
       const unlock = () => {
-        getCtx();
+        ensureReady();
       };
 
       return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, lastClick: click });
       const lastSoundClickRef = useRef(click);
@@ -256,7 +273,9 @@
           const wasInRange = lastSoundClickRef.current >= range[0] && lastSoundClickRef.current <= range[1];
           const enteringRange = inRange && !wasInRange;
           const atEdge = click === DF64.minClick || click === DF64.maxClick;
-          playClickSound(atEdge ? 'edge' : enteringRange ? 'snap' : 'detent');
+          const variant = atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
+          playClickSound(variant);
+          if (vibrateFeedback) vibrateFeedback(variant);
           if (enteringRange) {
             setRangePulse(true);
             if (rangePulseTimerRef.current) clearTimeout(rangePulseTimerRef.current);
@@ -267,7 +286,7 @@
           }
           lastSoundClickRef.current = click;
         }
-      }, [click, range, playClickSound]);
+      }, [click, range, playClickSound, vibrateFeedback]);
 
       const numberedTicks = useMemo(() => {
         const ticks = [];
@@ -693,6 +712,13 @@
         }
       }, []);
 
+      const vibrateFeedback = useCallback((variant) => {
+        if (!navigator.vibrate) return;
+        if (variant === 'edge') navigator.vibrate(18);
+        else if (variant === 'snap') navigator.vibrate([12, 24, 16]);
+        else navigator.vibrate(8);
+      }, []);
+
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1107,6 +1133,7 @@
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
                 unlockSound={unlockSound}
+                vibrateFeedback={vibrateFeedback}
               />
             </div>
 
