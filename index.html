@@ -148,10 +148,27 @@
         if (enabled) getCtx();
       };
 
-      return { play, setEnabled };
+      const unlock = () => {
+        const c = getCtx();
+        if (!c) return;
+        try {
+          if (c.state === 'suspended') c.resume();
+          // Fire an inaudible pulse inside a real gesture to satisfy mobile audio unlock policies.
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          gain.gain.value = 0.00001;
+          osc.connect(gain);
+          gain.connect(c.destination);
+          const t = c.currentTime;
+          osc.start(t);
+          osc.stop(t + 0.01);
+        } catch (e) {}
+      };
+
+      return { play, setEnabled, unlock };
     }
 
-    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound }) {
+    function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, ensureSoundReady }) {
       const dialRef = useRef(null);
       const dragRef = useRef({ active: false, lastAngle: 0, accumulatedDelta: 0, startClick: 0, lastClick: 0 });
       const lastSoundClickRef = useRef(click);
@@ -179,6 +196,7 @@
 
       const handlePointerDown = (e) => {
         e.preventDefault();
+        ensureSoundReady?.();
         setLabelsVisible(true);
         const startAngle = getAngleFromEvent(e);
         dragRef.current = {
@@ -673,6 +691,12 @@
         soundEngineRef.current.play(variant);
       }, []);
 
+      const ensureSoundReady = useCallback(() => {
+        if (soundEngineRef.current.unlock) {
+          soundEngineRef.current.unlock();
+        }
+      }, []);
+
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1086,6 +1110,7 @@
                 methodLabel={methodLabel}
                 dialOffset={dialOffset}
                 playClickSound={playClickSound}
+                ensureSoundReady={ensureSoundReady}
               />
             </div>
 
