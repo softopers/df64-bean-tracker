@@ -704,6 +704,25 @@
         soundEngineRef.current.play(variant);
       }, [ensureSoundReady]);
 
+      // Initialize audio context on first user interaction anywhere on the page
+      // This ensures sound is ready by the time dial is dragged
+      useEffect(() => {
+        const initAudioOnInteraction = () => {
+          ensureSoundReady();
+          // Remove listeners after first interaction
+          document.removeEventListener('touchstart', initAudioOnInteraction);
+          document.removeEventListener('mousedown', initAudioOnInteraction);
+        };
+        
+        document.addEventListener('touchstart', initAudioOnInteraction, { once: true });
+        document.addEventListener('mousedown', initAudioOnInteraction, { once: true });
+        
+        return () => {
+          document.removeEventListener('touchstart', initAudioOnInteraction);
+          document.removeEventListener('mousedown', initAudioOnInteraction);
+        };
+      }, [ensureSoundReady]);
+
       const showFeedback = useCallback((text) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
