@@ -171,9 +171,10 @@
 
     function Dial({ click, setClick, methodId, methodLabel, dialOffset, playClickSound, unlockSound, vibrateFeedback }) {
       const dialRef = useRef(null);
-      const dragRef = useRef({ active: false, startAngle: 0, startClick: 0 });
+      const dragRef = useRef({ active: false, lastClick: click });
       const lastSoundClickRef = useRef(click);
       const dragVibrationHandledRef = useRef(false);
+      const dragSoundHandledRef = useRef(false);
       const labelHideTimerRef = useRef(null);
       const rangePulseTimerRef = useRef(null);
       const [labelsVisible, setLabelsVisible] = useState(false);
@@ -186,6 +187,30 @@
         const t = (c - DF64.minClick) / totalClicks;
         return dialStart + t * DF64.dialSweep;
       }, [dialStart, totalClicks]);
+
+      const normalizeDeg = useCallback((deg) => {
+        let n = deg % 360;
+        if (n < 0) n += 360;
+        return n;
+      }, []);
+
+      const angleToClick = useCallback((angleDeg) => {
+        const start = normalizeDeg(dialStart);
+        const pointer = normalizeDeg(angleDeg);
+        let rel = pointer - start;
+        if (rel < 0) rel += 360;
+
+        if (rel > DF64.dialSweep) {
+          const distToStart = Math.min(rel, 360 - rel);
+          const distToEndRaw = Math.abs(rel - DF64.dialSweep);
+          const distToEnd = Math.min(distToEndRaw, 360 - distToEndRaw);
+          rel = distToStart <= distToEnd ? 0 : DF64.dialSweep;
+        }
+
+        const t = rel / DF64.dialSweep;
+        const mapped = DF64.minClick + t * totalClicks;
+        return Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(mapped)));
+      }, [dialStart, normalizeDeg, totalClicks]);
 
       const getAngleFromEvent = (e) => {
         const rect = dialRef.current.getBoundingClientRect();
@@ -202,8 +227,6 @@
         if (unlockSound) unlockSound();
         dragRef.current = {
           active: true,
-          startAngle: getAngleFromEvent(e),
-          startClick: click,
           lastClick: click,
         };
       };
@@ -220,21 +243,19 @@
         if (!dragRef.current.active) return;
         if (e.touches) e.preventDefault();
         const currentAngle = getAngleFromEvent(e);
-        let delta = currentAngle - dragRef.current.startAngle;
-        while (delta > 180) delta -= 360;
-        while (delta < -180) delta += 360;
-        const clickDelta = (delta / DF64.dialSweep) * totalClicks;
-        const next = Math.max(DF64.minClick, Math.min(DF64.maxClick, Math.round(dragRef.current.startClick + clickDelta)));
+        const next = angleToClick(currentAngle);
         if (next !== dragRef.current.lastClick) {
+          const variant = getFeedbackVariant(dragRef.current.lastClick, next);
+          playClickSound(variant);
+          dragSoundHandledRef.current = true;
           if (vibrateFeedback) {
-            const variant = getFeedbackVariant(dragRef.current.lastClick, next);
             vibrateFeedback(variant);
             dragVibrationHandledRef.current = true;
           }
           setClick(next);
           dragRef.current.lastClick = next;
         }
-      }, [getFeedbackVariant, setClick, totalClicks, vibrateFeedback]);
+      }, [angleToClick, getFeedbackVariant, playClickSound, setClick, vibrateFeedback]);
 
       useEffect(() => {
         const move = (e) => handlePointerMove(e);
@@ -267,7 +288,10 @@
           const enteringRange = inRange && !wasInRange;
           const atEdge = click === DF64.minClick || click === DF64.maxClick;
           const variant = atEdge ? 'edge' : enteringRange ? 'snap' : 'detent';
-          playClickSound(variant);
+          if (!dragSoundHandledRef.current) {
+            playClickSound(variant);
+          }
+          dragSoundHandledRef.current = false;
           if (vibrateFeedback && !dragVibrationHandledRef.current) {
             vibrateFeedback(variant);
           }
@@ -282,7 +306,7 @@
           }
           lastSoundClickRef.current = click;
         }
-      }, [click, range, playClickSound, vibrateFeedback]);
+      }, [click, playClickSound, range, vibrateFeedback]);
 
       const numberedTicks = useMemo(() => {
         const ticks = [];
